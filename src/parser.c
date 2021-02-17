@@ -110,6 +110,52 @@ xml2jsonc_convert_elements(xmlNode *anode, json_object *jobj)
     }
 }
 
+
+/**
+ *   XML parsing toolkit by M4j0r (02/2021)
+ */
+typedef enum e__xml_tag_type {
+    XML_ERROR = -1,
+    XML_EOL = 0,
+    XML_OPEN_TAG,
+    XML_CLOSE_TAG,
+    XML_UNIT_TAG
+} t_xml_tag_type;
+
+// Find the next XML tag and returns the offset to it's first char '<'
+size_t _find_next_tag(const char* const str, const size_t len, size_t offset) {
+    while (offset < len && str[offset] != '<')
+        offset++;
+    return offset;
+}
+
+// Find the next XML tag and return it's type
+t_xml_tag_type _get_next_tag(const char* const str, const size_t len, size_t* offset) {
+    t_xml_tag_type tag_type = XML_OPEN_TAG;
+    size_t start_tag_offset = 0;
+
+    if (str == NULL || offset == NULL) {
+        return XML_ERROR;
+    }
+    *offset = _find_next_tag(str, len, *offset);
+    start_tag_offset = *offset;
+    while (*offset < len) {
+        if (str[*offset] == '/') {
+            if (*offset - start_tag_offset == 1)
+                tag_type = XML_CLOSE_TAG;
+            else if ((*offset) + 1 < len && str[(*offset) + 1] == '>' && tag_type != XML_CLOSE_TAG)
+                tag_type = XML_UNIT_TAG;
+        }
+        if (str[*offset] == '>') {
+            (*offset)++;
+            return tag_type;
+        }
+        (*offset)++;
+    }
+    return XML_EOL;
+}
+
+
 /* parser _parse interface
  *
  * All parsers receive
@@ -2373,17 +2419,67 @@ done:
  * last '>' in the string and ignore the rest.
  *
  * added 2021-02-01 by jeremie.jourdin@advens.fr
+ * xml checks improved by KGuillemot & M4j0r
  */
 PARSER_Parse(XML)
+
         xmlDocPtr doc = NULL;
         xmlNodePtr root_element = NULL;
 
-        /* Find the last occurence of '>' in the string */
-        char * pch;
-        pch=strrchr((const char *) npb->str + *offs, '>');
+        assert(npb->str != NULL);
+        assert(offs != NULL);
+        assert(parsed != NULL);
+
+        /**
+         * Routine by KGuillemot & M4j0r
+         * to retrieve the end of the current xml tree
+         **/
+        // Check begin/end of xml
+        if( strncmp(npb->str + *offs, "<?xml", 5) != 0 ) {
+            LN_DBGPRINTF(npb->ctx, 0, "Line does not begin with <?xml : '%s'", npb->str + *offs);
+            goto done;
+        }
+        // End of xml header
+        char *end_xml_header = NULL;
+        if( (end_xml_header=strstr((const char *) npb->str + *offs, "?>")) == NULL ) {
+            LN_DBGPRINTF(npb->ctx, 0, "Line does not begin with <?xml : '%s'", npb->str + *offs);
+            goto done;
+        }
+        // Pass the "?>" string
+        end_xml_header += 2;
+
+        // i is offset to current char
+        size_t i = (end_xml_header - npb->str);
+
+        // opened is number of opened xml element header
+        int opened = 0;
+        // Type of tag detected
+        t_xml_tag_type tag_type = 0;
+        while ( i < npb->strLen ) {
+            tag_type = _get_next_tag(npb->str, npb->strLen, &i);
+            switch( tag_type ) {
+                case XML_ERROR:
+                    LN_DBGPRINTF(npb->ctx, 0, "An error occured parsing xml element from '%s'", npb->str + i);
+                    goto done;
+                    break;
+                case XML_EOL:
+                    LN_DBGPRINTF(npb->ctx, 0, "XML seems to be truncated, rest='%s'", npb->str + i);
+                    goto done;
+                    break;
+                case XML_OPEN_TAG:
+                    opened++;
+                    break;
+                case XML_CLOSE_TAG:
+                    opened--;
+                    break;
+            }
+            if( opened == 0 ) {
+                break;
+            }
+        }
 
         /* Truncate the string after the last occurence of '>' */
-        int newLen = pch - (npb->str + *offs) + 1;
+        int newLen = i - *offs;
         char *cstr = strndup(npb->str + *offs, newLen);
         CHKN(cstr);
 
