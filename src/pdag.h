@@ -163,7 +163,7 @@ struct npb {
 	es_str_t *rule;			/**< a mock-up of the rule used to parse */
 	es_str_t *exec_path;
     struct json_object *fieldposition; /**< field logspan data */
-	struct json_object *field_path; /**< field logspan path stack */
+	struct json_object *field_path;    /**< field logspan path stack */
 #ifdef ADVANCED_STATS
 	int pathlen;
 	int backtracked;

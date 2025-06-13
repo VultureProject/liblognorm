@@ -1682,7 +1682,7 @@ LN_DBGPRINTF(dag->ctx, "%zu: enter parser, dag node %p, json %p", offs, dag, jso
 			}
 		}
 		/* Pop from fieldposition path stack */
-		if (path_pushed) {
+		if (path_pushed && npb->field_path != NULL) {
 			const int current_len = json_object_array_length(npb->field_path);
 			/* This next line is very important for correctness.
 			 * We put (decrement refcount) the string we added earlier. */
@@ -1716,18 +1716,19 @@ ln_normalize(ln_ctx ctx, const char *str, const size_t strLen, struct json_objec
 {
 	int r;
 	struct ln_pdag *endNode = NULL;
+	
+	npb_t npb;
+	memset(&npb, 0, sizeof(npb));
+	npb.ctx = ctx;
+	npb.str = str;
+	npb.strLen = strLen;
+
 	/* old cruft */
 	if(ctx->version == 1) {
 		r = ln_v1_normalize(ctx, str, strLen, json_p);
 		goto done;
 	}
 	/* end old cruft */
-
-	npb_t npb;
-	memset(&npb, 0, sizeof(npb));
-	npb.ctx = ctx;
-	npb.str = str;
-	npb.strLen = strLen;
 
 	if(ctx->opts & LN_CTXOPT_ADD_FIELDS_POSITION) {
 		npb.fieldposition = json_object_new_object();
@@ -1817,9 +1818,12 @@ ln_normalize(ln_ctx ctx, const char *str, const size_t strLen, struct json_objec
 	es_deleteStr(npb.astats.exec_path);
 #endif
 done:
-	if (npb.field_path != NULL)
+	if (npb.field_path != NULL) {
+		printf("Ok\n");
 		json_object_put(npb.field_path);
-	if (npb.fieldposition != NULL)
+	}
+	if (npb.fieldposition != NULL) {
 		json_object_put(npb.fieldposition);
+	}
 	return r;
 }
