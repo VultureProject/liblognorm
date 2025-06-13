@@ -3009,7 +3009,7 @@ cefParseExtensions(npb_t *const npb,
 
 			++i; /* skip past value */
 		}
-
+		
 		if(jroot != NULL) {
 			CHKN(name = malloc(sizeof(char) * (lenName + 1)));
 			memcpy(name, npb->str+iName, lenName);
@@ -3133,7 +3133,7 @@ PARSER_Parse(CEF)
 	   )	FAIL(LN_WRONGPARSER);
 	
 	i += 6; /* position on '|' */
-
+	
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &vendor));
 	ln_recordfieldposition(npb, "DeviceVendor", iHdrStart, i-1);
@@ -3191,11 +3191,25 @@ PARSER_Parse(CEF)
 		json_object *jext;
 		CHKN(jext = json_object_new_object());
 		json_object_object_add(*value, "Extensions", jext);
-
+		
+		size_t iSave = i;
 		i = iBeginExtensions;
-		cefParseExtensions(npb, &i, jext);
-	}
 
+		if (npb->field_path != NULL) {
+			json_object_array_add(npb->field_path, json_object_new_string("Extensions"));
+		}
+		cefParseExtensions(npb, &i, jext);
+		
+        if (npb->field_path != NULL) {
+			ln_recordfieldposition(npb, "__fieldposition", iBeginExtensions, i);
+			const int current_len = json_object_array_length(npb->field_path);
+            if (current_len > 0) {
+                json_object_array_del_idx(npb->field_path, current_len - 1);
+            }
+        }
+        i = iSave;
+	}
+	
 done:
 	if(r != 0 && value != NULL && *value != NULL) {
 		json_object_put(*value);

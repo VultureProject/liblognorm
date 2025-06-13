@@ -1819,7 +1819,6 @@ ln_normalize(ln_ctx ctx, const char *str, const size_t strLen, struct json_objec
 #endif
 done:
 	if (npb.field_path != NULL) {
-		printf("Ok\n");
 		json_object_put(npb.field_path);
 	}
 	if (npb.fieldposition != NULL) {
