@@ -1305,13 +1305,6 @@ addRuleMetadata(npb_t *const __restrict__ npb,
 	struct json_object *meta_rule = NULL;
 	struct json_object *value;
 
-	if( !( (ctx->opts & (LN_CTXOPT_ADD_RULE | LN_CTXOPT_ADD_RULE_LOCATION | LN_CTXOPT_ADD_EXEC_PATH)) ||
-	    (npb->fieldposition != NULL) ) ) {
-		return;
-	}
-
-	json_object_object_get_ex(json, META_KEY, &meta);
-
 	if(ctx->opts & LN_CTXOPT_ADD_RULE) { /* matching rule mockup */
 		if(meta_rule == NULL)
 			meta_rule = json_object_new_object();
@@ -1330,6 +1323,13 @@ addRuleMetadata(npb_t *const __restrict__ npb,
 		value = json_object_new_int((int)endNode->rb_lineno);
 		json_object_object_add(location, "line", value);
 		json_object_object_add(meta_rule, RULE_LOCATION_KEY, location);
+	}
+
+	if(npb->fieldposition != NULL && LN_CTXOPT_ADD_FIELDS_POSITION) {
+		if(meta_rule == NULL)
+			meta_rule = json_object_new_object();
+		json_object_object_add(meta_rule, "fields_position", npb->fieldposition);
+		npb->fieldposition = NULL;
 	}
 
 	if(meta_rule != NULL) {
@@ -1358,12 +1358,8 @@ addRuleMetadata(npb_t *const __restrict__ npb,
 	}
 #endif
 
-    if(meta != NULL)
-		json_object_object_add(json, META_KEY, meta);
-	if(npb->fieldposition != NULL) {
-		json_object_object_add(meta, "fields_position", npb->fieldposition);
-		npb->fieldposition = NULL;
-	}
+		if(meta != NULL)
+			json_object_object_add(json, META_KEY, meta);
 }
 
 
