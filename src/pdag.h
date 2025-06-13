@@ -269,4 +269,11 @@ ln_normalizeRec(npb_t *const __restrict__ npb,
 	struct ln_pdag **endNode
 );
 
+void 
+ln_recordfieldposition(
+	npb_t *npb, 
+	const char *fieldName, 
+	size_t startOffset, 
+	size_t endOffset
+);
 #endif /* #ifndef LOGNORM_PDAG_H_INCLUDED */
