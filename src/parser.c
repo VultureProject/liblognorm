@@ -3185,7 +3185,7 @@ PARSER_Parse(CEF)
 	current_len = json_object_array_length(npb->field_path);
 	json_object_array_del_idx(npb->field_path, current_len - 1);
 
-   /* OK, we now know we have a good header. Now, we need
+   	/* OK, we now know we have a good header. Now, we need
 	* to process extensions.
 	* This time, we do NOT pre-process the extension, but rather
 	* persist them directly to JSON. This is contrary to other
