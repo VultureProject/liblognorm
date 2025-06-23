@@ -274,6 +274,7 @@ ln_recordfieldposition(
 	npb_t *npb, 
 	const char *fieldName, 
 	size_t startOffset, 
-	size_t endOffset
+	size_t endOffset,
+	int is_container
 );
 #endif /* #ifndef LOGNORM_PDAG_H_INCLUDED */

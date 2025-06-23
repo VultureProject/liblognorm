@@ -1895,29 +1895,29 @@ PARSER_Parse(CiscoInterfaceSpec)
 		CHKN(json = json_object_new_string_len(c+idxInterface, lenInterface));
 		json_object_object_add_ex(*value, "interface", json,
 			JSON_C_OBJECT_ADD_KEY_IS_NEW|JSON_C_OBJECT_KEY_IS_CONSTANT);
-		ln_recordfieldposition(npb, "interface", idxInterface, idxInterface + lenInterface);
+		ln_recordfieldposition(npb, "interface", idxInterface, idxInterface + lenInterface, 0);
 	}
 	CHKN(json = json_object_new_string_len(c+idxIP, lenIP));
 	json_object_object_add_ex(*value, "ip", json, JSON_C_OBJECT_ADD_KEY_IS_NEW|JSON_C_OBJECT_KEY_IS_CONSTANT);
-	ln_recordfieldposition(npb, "ip", idxIP, idxIP + lenIP);
+	ln_recordfieldposition(npb, "ip", idxIP, idxIP + lenIP, 0);
 	CHKN(json = json_object_new_string_len(c+idxPort, lenPort));
 	json_object_object_add_ex(*value, "port", json, JSON_C_OBJECT_ADD_KEY_IS_NEW|JSON_C_OBJECT_KEY_IS_CONSTANT);
-	ln_recordfieldposition(npb, "port", idxPort, idxPort + lenPort);
+	ln_recordfieldposition(npb, "port", idxPort, idxPort + lenPort, 0);
 	if(bHaveIP2) {
 		CHKN(json = json_object_new_string_len(c+idxIP2, lenIP2));
 		json_object_object_add_ex(*value, "ip2", json,
 			JSON_C_OBJECT_ADD_KEY_IS_NEW|JSON_C_OBJECT_KEY_IS_CONSTANT);
-		ln_recordfieldposition(npb, "ip2", idxIP2, idxIP2 + lenIP2);
+		ln_recordfieldposition(npb, "ip2", idxIP2, idxIP2 + lenIP2, 0);
 		CHKN(json = json_object_new_string_len(c+idxPort2, lenPort2));
 		json_object_object_add_ex(*value, "port2", json,
 			JSON_C_OBJECT_ADD_KEY_IS_NEW|JSON_C_OBJECT_KEY_IS_CONSTANT);
-		ln_recordfieldposition(npb, "port2", idxPort2, idxPort2 + lenPort2);
+		ln_recordfieldposition(npb, "port2", idxPort2, idxPort2 + lenPort2, 0);
 	}
 	if(bHaveUser) {
 		CHKN(json = json_object_new_string_len(c+idxUser, lenUser));
 		json_object_object_add_ex(*value, "user", json,
 			JSON_C_OBJECT_ADD_KEY_IS_NEW|JSON_C_OBJECT_KEY_IS_CONSTANT);
-		ln_recordfieldposition(npb, "user", idxUser, idxUser + lenUser);
+		ln_recordfieldposition(npb, "user", idxUser, idxUser + lenUser, 0);
 	}
 
 success: /* success, persist */
@@ -2305,7 +2305,6 @@ parseIPTablesNameValue(npb_t *const npb,
 		CHKN(json = json_object_new_string_len(npb->str+iVal, lenVal));
 	}
 	json_object_object_add(valroot, name, json);
-	ln_recordfieldposition(npb, name, iVal, iVal + lenVal);
 done:
 	free(name);
 	return r;
@@ -2627,7 +2626,6 @@ parseNameValue(npb_t *const npb,
 	json_object *json;
 	CHKN(json = json_object_new_string_len(npb->str+iVal, lenVal));
 	json_object_object_add(valroot, name, json);
-	ln_recordfieldposition(npb, name, iVal, iVal + lenVal);
 done:
 	free(name);
 	return r;
@@ -3042,7 +3040,12 @@ cefParseExtensions(npb_t *const npb,
 			json_object *json;
 			CHKN(json = json_object_new_string(value));
 			json_object_object_add(jroot, name, json);
-			ln_recordfieldposition(npb, name, iValue, iValue + lenValue);
+
+			if (npb->field_path != NULL) json_object_array_add(npb->field_path, json_object_new_string(name));
+			ln_recordfieldposition(npb, name, iValue, iValue + lenValue, 0);
+			if (npb->field_path != NULL) json_object_array_del_idx(npb->field_path, json_object_array_length(npb->field_path) - 1);
+
+
 			free(name); name = NULL;
 			free(value); value = NULL;
 		}
@@ -3132,48 +3135,64 @@ PARSER_Parse(CEF)
 	   npb->str[i+5] != '|'
 	   )	FAIL(LN_WRONGPARSER);
 	
-	i += 6; /* position on '|' */
+	if (value != NULL && *value == NULL) {
+		CHKN(*value = json_object_new_object());
+	}
 	
+	i += 6; /* position past 'CEF:0|' */
+	
+	int current_len;
+
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &vendor));
-	ln_recordfieldposition(npb, "DeviceVendor", iHdrStart, i-1);
+	json_object_array_add(npb->field_path, json_object_new_string("DeviceVendor"));
+	ln_recordfieldposition(npb, "DeviceVendor", iHdrStart, i-1, 0);
+	current_len = json_object_array_length(npb->field_path);
+	json_object_array_del_idx(npb->field_path, current_len - 1);
+	
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &product));
-	ln_recordfieldposition(npb, "DeviceProduct", iHdrStart, i-1);
+	json_object_array_add(npb->field_path, json_object_new_string("DeviceProduct"));
+	ln_recordfieldposition(npb, "DeviceProduct", iHdrStart, i-1, 0);
+	current_len = json_object_array_length(npb->field_path);
+	json_object_array_del_idx(npb->field_path, current_len - 1);
+
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &version));
-	ln_recordfieldposition(npb, "DeviceVersion", iHdrStart, i-1);
+	json_object_array_add(npb->field_path, json_object_new_string("DeviceVersion"));
+	ln_recordfieldposition(npb, "DeviceVersion", iHdrStart, i-1, 0);
+	current_len = json_object_array_length(npb->field_path);
+	json_object_array_del_idx(npb->field_path, current_len - 1);
+
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &sigID));
-	ln_recordfieldposition(npb, "SignatureID", iHdrStart, i-1);
+	json_object_array_add(npb->field_path, json_object_new_string("SignatureID"));
+	ln_recordfieldposition(npb, "SignatureID", iHdrStart, i-1, 0);
+	current_len = json_object_array_length(npb->field_path);
+	json_object_array_del_idx(npb->field_path, current_len - 1);
+
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &name));
-	ln_recordfieldposition(npb, "Name", iHdrStart, i-1);
+	json_object_array_add(npb->field_path, json_object_new_string("Name"));
+	ln_recordfieldposition(npb, "Name", iHdrStart, i-1, 0);
+	current_len = json_object_array_length(npb->field_path);
+	json_object_array_del_idx(npb->field_path, current_len - 1);
+
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &severity));
-	ln_recordfieldposition(npb, "Severity", iHdrStart, i-1);
+	json_object_array_add(npb->field_path, json_object_new_string("Severity"));
+	ln_recordfieldposition(npb, "Severity", iHdrStart, i-1, 0);
+	current_len = json_object_array_length(npb->field_path);
+	json_object_array_del_idx(npb->field_path, current_len - 1);
 
-	/* OK, we now know we have a good header. Now, we need
-	 * to process extensions.
-	 * This time, we do NOT pre-process the extension, but rather
-	 * persist them directly to JSON. This is contrary to other
-	 * parsers, but as the CEF header is pretty unique, this time
-	 * it is exteremely unlike we will get a no-match during
-	 * extension processing. Even if so, nothing bad happens, as
-	 * the extracted data is discarded. But the regular case saves
-	 * us processing time and complexity. The only time when we
-	 * cannot directly process it is when the caller asks us not
-	 * to persist the data. So this must be handled differently.
-	 */
-	 size_t iBeginExtensions = i;
-	 CHKR(cefParseExtensions(npb, &i, NULL));
+	size_t iBeginExtensions = i;
+	CHKR(cefParseExtensions(npb, &i, NULL));
 
 	/* success, persist */
 	*parsed = i - *offs;
 	r = 0; /* success */
 
 	if(value != NULL) {
-		CHKN(*value = json_object_new_object());
 		json_object *json;
 		CHKN(json = json_object_new_string(vendor));
 		json_object_object_add(*value, "DeviceVendor", json);
@@ -3198,16 +3217,19 @@ PARSER_Parse(CEF)
 		if (npb->field_path != NULL) {
 			json_object_array_add(npb->field_path, json_object_new_string("Extensions"));
 		}
+		
 		cefParseExtensions(npb, &i, jext);
 		
-        if (npb->field_path != NULL) {
-			ln_recordfieldposition(npb, "__fieldposition", iBeginExtensions, i);
-			const int current_len = json_object_array_length(npb->field_path);
-            if (current_len > 0) {
-                json_object_array_del_idx(npb->field_path, current_len - 1);
-            }
-        }
-        i = iSave;
+		/* Record position of the "Extensions" container itself */
+		ln_recordfieldposition(npb, "Extensions", iBeginExtensions, i, 1);
+		
+		if (npb->field_path != NULL) {
+			current_len = json_object_array_length(npb->field_path);
+			if (current_len > 0) {
+				json_object_array_del_idx(npb->field_path, current_len - 1);
+			}
+		}
+		i = iSave;
 	}
 	
 done:
@@ -3307,7 +3329,7 @@ PARSER_Parse(CheckpointLEA)
 			json_object *json;
 			CHKN(json = json_object_new_string(val));
 			json_object_object_add(*value, name, json);
-			ln_recordfieldposition(npb, name, iValue, iValue + lenValue);
+			ln_recordfieldposition(npb, name, iValue, iValue + lenValue, 0);
 			free(name); name = NULL;
 			free(val); val = NULL;
 		}

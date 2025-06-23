@@ -27,7 +27,7 @@
 #include "parser.h"
 #include "helpers.h"
 
-void ln_recordfieldposition(npb_t *npb, const char *fieldName, size_t startOffset, size_t endOffset) {
+void ln_recordfieldposition(npb_t *npb, const char *fieldName, size_t startOffset, size_t endOffset, int is_container) {
 	if (npb == NULL || npb->fieldposition == NULL || npb->field_path == NULL || fieldName == NULL) {
 		return;
 	}
@@ -37,52 +37,46 @@ void ln_recordfieldposition(npb_t *npb, const char *fieldName, size_t startOffse
 
 	struct json_object *parent_object = npb->fieldposition;
 	const int path_depth = json_object_array_length(npb->field_path);
-	int is_leaf_or_container_span = 0;
 
-	// Check if this call is for a leaf's span or a container's span.
-	// This is true if the field name matches the last element pushed to the path.
-	if (path_depth > 0) {
-		const char *top_of_stack = json_object_get_string(json_object_array_get_idx(npb->field_path, path_depth - 1));
-		if (top_of_stack != NULL && strcmp(fieldName, top_of_stack) == 0) {
-			is_leaf_or_container_span = 1;
-		}
-	}
-
-	// If it's a leaf/container call, we operate on its parent, so traverse one level less.
-	const int depth_to_traverse = is_leaf_or_container_span ? (path_depth - 1) : path_depth;
-
-	// Traverse to the correct parent object.
-	for (int i = 0; i < depth_to_traverse; ++i) {
+	// Traverse the path to find the correct parent object for the current field.
+	// The path pushed to the stack includes the current field name.
+	for (int i = 0; i < path_depth - 1; ++i) {
 		const char *path_segment = json_object_get_string(json_object_array_get_idx(npb->field_path, i));
-		if (path_segment == NULL) return; // Defensive check
+		if (path_segment == NULL) return;
 
 		struct json_object *next_level;
 		if (!json_object_object_get_ex(parent_object, path_segment, &next_level)) {
+			// If a path segment doesn't exist, create it as a new object.
 			next_level = json_object_new_object();
 			json_object_object_add(parent_object, path_segment, next_level);
 		} else if (json_object_get_type(next_level) != json_type_object) {
-			// Path conflict: An existing field is not an object. Stop here to prevent a crash.
+			// Conflict: A field with the same name as a path segment exists and is not an object.
 			return;
 		}
 		parent_object = next_level;
 	}
 
-	// Prepare the span array.
+	// Prepare the position array: [start, end]
 	struct json_object *pos_array = json_object_new_array();
 	json_object_array_add(pos_array, json_object_new_int64(startOffset));
 	json_object_array_add(pos_array, json_object_new_int64(endOffset));
 
-	struct json_object *existing_field;
-	// Check if the key for the current field already exists in its parent.
-	if (is_leaf_or_container_span &&
-	    json_object_object_get_ex(parent_object, fieldName, &existing_field) &&
-	    json_object_get_type(existing_field) == json_type_object) {
-		// This is a container that already exists (created by a child).
-		// Add its own span to it under the special "__fieldposition" key.
-		json_object_object_add(existing_field, "__fieldposition", pos_array);
+	if (is_container) {
+		// This is a container. Its entry must be an object.
+		struct json_object *field_object;
+		if (!json_object_object_get_ex(parent_object, fieldName, &field_object)) {
+			// If it doesn't exist (e.g., container with no children), create it.
+			field_object = json_object_new_object();
+			json_object_object_add(parent_object, fieldName, field_object);
+		} else if (json_object_get_type(field_object) != json_type_object) {
+			// This should not happen if logic is correct, but as a safeguard.
+			json_object_put(pos_array);
+			return;
+		}
+		// Add the container's own span to its object.
+		json_object_object_add(field_object, "__fieldposition", pos_array);
 	} else {
-		// This is a leaf node or a child of a container. Add it normally.
-		// This will correctly create/replace the key in the parent object.
+		// This is a leaf. Its entry is just the position array.
 		json_object_object_add(parent_object, fieldName, pos_array);
 	}
 }
@@ -1512,7 +1506,9 @@ tryParser(npb_t *const __restrict__ npb,
 		LN_DBGPRINTF(dag->ctx, "called CUSTOM PARSER '%s', result %d, "
 			"offs %zd, *pParsed %zd", dag->ctx->type_pdags[prs->custTypeIdx].name, r, *offs, *pParsed);
 		*pParsed = npb->parsedTo - *offs;
-		if (r != 0) {
+		if (r == 0) {
+			ln_recordfieldposition(npb, prs->name, startOffset, startOffset + *pParsed, 1);
+		} else {
 			json_object_put(*value);
 			*value = NULL;
 		}
@@ -1523,9 +1519,15 @@ tryParser(npb_t *const __restrict__ npb,
 	} else {
 		r = parser_lookup_table[prs->prsid].parser(npb,
 			offs, prs->parser_data, pParsed, (prs->name == NULL) ? NULL : value);
-	}
-	if (r == 0) {
-		ln_recordfieldposition(npb, prs->name, startOffset, startOffset + *pParsed);
+		if (r == 0) {
+			/* FIX: Check if the parser type is a known container like 'cef' */
+			int is_container = 0;
+			/* we currently know only about the cef parser, but others may follow. */
+			if (prs->prsid == ln_parserName2ID("cef")) {
+				is_container = 1;
+			}
+			ln_recordfieldposition(npb, prs->name, startOffset, startOffset + *pParsed, is_container);
+		}
 	}
 	LN_DBGPRINTF(npb->ctx, "parser lookup returns %d, pParsed %zu", r, *pParsed);
 	npb->parsedTo = parsedTo;
@@ -1654,6 +1656,18 @@ LN_DBGPRINTF(dag->ctx, "%zu: enter parser, dag node %p, json %p", offs, dag, jso
 		}
 
 		localR = tryParser(npb, dag, &i, &parsed, &value, prs);
+
+		/* FIX: Pop the path immediately after the parser is tried.
+		 * This ensures the path is clean before the recursive call for sibling fields.
+		 */
+		if (path_pushed && npb->field_path != NULL) {
+			const int current_len = json_object_array_length(npb->field_path);
+			/* This next line is very important for correctness.
+			 * We put (decrement refcount) the string we added earlier. */
+			json_object_array_del_idx(npb->field_path, current_len - 1);
+		}
+
+
 		if(localR == 0) {
 			parsedTo = i + parsed;
 			/* potential hit, need to verify */
@@ -1680,13 +1694,6 @@ LN_DBGPRINTF(dag->ctx, "%zu: enter parser, dag node %p, json %p", offs, dag, jso
 					json_object_put(value);
 				}
 			}
-		}
-		/* Pop from fieldposition path stack */
-		if (path_pushed && npb->field_path != NULL) {
-			const int current_len = json_object_array_length(npb->field_path);
-			/* This next line is very important for correctness.
-			 * We put (decrement refcount) the string we added earlier. */
-			json_object_array_del_idx(npb->field_path, current_len - 1);
 		}
 
 		/* did we have a longer parser --> then update */
