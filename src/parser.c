@@ -3185,6 +3185,18 @@ PARSER_Parse(CEF)
 	current_len = json_object_array_length(npb->field_path);
 	json_object_array_del_idx(npb->field_path, current_len - 1);
 
+   /* OK, we now know we have a good header. Now, we need
+	* to process extensions.
+	* This time, we do NOT pre-process the extension, but rather
+	* persist them directly to JSON. This is contrary to other
+	* parsers, but as the CEF header is pretty unique, this time
+	* it is exteremely unlike we will get a no-match during
+	* extension processing. Even if so, nothing bad happens, as
+	* the extracted data is discarded. But the regular case saves
+	* us processing time and complexity. The only time when we
+	* cannot directly process it is when the caller asks us not
+	* to persist the data. So this must be handled differently.
+	*/
 	size_t iBeginExtensions = i;
 	CHKR(cefParseExtensions(npb, &i, NULL));
 
