@@ -2985,14 +2985,14 @@ cefParseExtensions(npb_t *const npb,
 	size_t iValue, lenValue;
 	char *name = NULL;
 	char *value = NULL;
+	
+	if (npb->str[i] == ' ') {
+		++i;
+	}
 
 	while(i < npb->strLen) {
 		while(i < npb->strLen && npb->str[i] == ' ')
 			++i;
-		
-		if (i == npb->strLen) {
-			break;
-		}
 		
 		iName = i;
 		CHKR(cefParseName(npb, &i));
@@ -3049,7 +3049,6 @@ cefParseExtensions(npb_t *const npb,
 			if (npb->field_path != NULL) json_object_array_add(npb->field_path, json_object_new_string(name));
 			ln_recordfieldposition(npb, name, iValue, iValue + lenValue, 0);
 			if (npb->field_path != NULL) json_object_array_del_idx(npb->field_path, json_object_array_length(npb->field_path) - 1);
-
 
 			free(name); name = NULL;
 			free(value); value = NULL;
