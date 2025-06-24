@@ -2989,6 +2989,11 @@ cefParseExtensions(npb_t *const npb,
 	while(i < npb->strLen) {
 		while(i < npb->strLen && npb->str[i] == ' ')
 			++i;
+		
+		if (i == npb->strLen) {
+			break;
+		}
+		
 		iName = i;
 		CHKR(cefParseName(npb, &i));
 
@@ -3111,6 +3116,16 @@ done:
 	return r;
 }
 
+
+void track_cef_fieldposition(npb_t *const npb, const char* field_name, int iHdrStart, int i) {
+	if (npb->field_path != NULL) {
+		json_object_array_add(npb->field_path, json_object_new_string(field_name));
+		ln_recordfieldposition(npb, field_name, iHdrStart, i-1, 0);
+		int current_len = json_object_array_length(npb->field_path);
+		json_object_array_del_idx(npb->field_path, current_len - 1);
+	}
+}
+
 /**
  * Parser for ArcSight Common Event Format (CEF) version 0.
  * added 2015-05-05 by rgerhards, v1.1.2
@@ -3141,49 +3156,30 @@ PARSER_Parse(CEF)
 	
 	i += 6; /* position past 'CEF:0|' */
 	
-	int current_len;
 
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &vendor));
-	json_object_array_add(npb->field_path, json_object_new_string("DeviceVendor"));
-	ln_recordfieldposition(npb, "DeviceVendor", iHdrStart, i-1, 0);
-	current_len = json_object_array_length(npb->field_path);
-	json_object_array_del_idx(npb->field_path, current_len - 1);
+	track_cef_fieldposition(npb, "DeviceVendor", iHdrStart, i);
 	
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &product));
-	json_object_array_add(npb->field_path, json_object_new_string("DeviceProduct"));
-	ln_recordfieldposition(npb, "DeviceProduct", iHdrStart, i-1, 0);
-	current_len = json_object_array_length(npb->field_path);
-	json_object_array_del_idx(npb->field_path, current_len - 1);
-
+	track_cef_fieldposition(npb, "DeviceProduct", iHdrStart, i);
+	
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &version));
-	json_object_array_add(npb->field_path, json_object_new_string("DeviceVersion"));
-	ln_recordfieldposition(npb, "DeviceVersion", iHdrStart, i-1, 0);
-	current_len = json_object_array_length(npb->field_path);
-	json_object_array_del_idx(npb->field_path, current_len - 1);
+	track_cef_fieldposition(npb, "DeviceVersion", iHdrStart, i);
 
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &sigID));
-	json_object_array_add(npb->field_path, json_object_new_string("SignatureID"));
-	ln_recordfieldposition(npb, "SignatureID", iHdrStart, i-1, 0);
-	current_len = json_object_array_length(npb->field_path);
-	json_object_array_del_idx(npb->field_path, current_len - 1);
+	track_cef_fieldposition(npb, "SignatureID", iHdrStart, i);
 
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &name));
-	json_object_array_add(npb->field_path, json_object_new_string("Name"));
-	ln_recordfieldposition(npb, "Name", iHdrStart, i-1, 0);
-	current_len = json_object_array_length(npb->field_path);
-	json_object_array_del_idx(npb->field_path, current_len - 1);
+	track_cef_fieldposition(npb, "Name", iHdrStart, i);
 
 	iHdrStart = i;
 	CHKR(cefGetHdrField(npb, &i, (value == NULL) ? NULL : &severity));
-	json_object_array_add(npb->field_path, json_object_new_string("Severity"));
-	ln_recordfieldposition(npb, "Severity", iHdrStart, i-1, 0);
-	current_len = json_object_array_length(npb->field_path);
-	json_object_array_del_idx(npb->field_path, current_len - 1);
+	track_cef_fieldposition(npb, "Severity", iHdrStart, i);
 
    	/* OK, we now know we have a good header. Now, we need
 	* to process extensions.
@@ -3236,7 +3232,7 @@ PARSER_Parse(CEF)
 		ln_recordfieldposition(npb, "Extensions", iBeginExtensions, i, 1);
 		
 		if (npb->field_path != NULL) {
-			current_len = json_object_array_length(npb->field_path);
+			int current_len = json_object_array_length(npb->field_path);
 			if (current_len > 0) {
 				json_object_array_del_idx(npb->field_path, current_len - 1);
 			}
