@@ -33,20 +33,30 @@ test_def() {
 
 execute() {
     if [ "x$debug" == "xon" ]; then
-	echo "======rulebase======="
-	cat tmp.rulebase
-	echo "====================="
-	set -x
+        echo "======rulebase======="
+        cat tmp.rulebase
+        echo "====================="
+        set -x
     fi
-    if [ "$1" == "file" ]; then
-        $cmd $ln_opts -r tmp.rulebase -e json > test.out < $2
+
+    local type="$1"
+    shift # Consume the first argument ("file" or the input string)
+
+    local extra_args=("$@") # Store all other arguments
+    if [ "$type" == "file" ]; then
+        local input_file="$1"
+        shift # Consume the file name argument
+        extra_args=("$@") # Re-capture extra args after the filename
+        $cmd $ln_opts -r tmp.rulebase -e json "${extra_args[@]}" > test.out < "$input_file"
     else
-        echo "$1" | $cmd $ln_opts -r tmp.rulebase -e json > test.out
+        echo "$type" | $cmd $ln_opts -r tmp.rulebase -e json "${extra_args[@]}" > test.out
     fi
+
     echo "Out:"
     cat test.out
+
     if [ "x$debug" == "xon" ]; then
-	set +x
+        set +x
     fi
 }
 
