@@ -3454,7 +3454,6 @@ PARSER_Parse(Repeat)
 		/* Pop the index from the stack. */
 		if (index_pushed) {
 			const int current_len = json_object_array_length(npb->field_path);
-			json_object_put(json_object_array_get_idx(npb->field_path, current_len - 1));
 			json_object_array_del_idx(npb->field_path, current_len - 1);
 		}
 
