@@ -2626,6 +2626,15 @@ parseNameValue(npb_t *const npb,
 	json_object *json;
 	CHKN(json = json_object_new_string_len(npb->str+iVal, lenVal));
 	json_object_object_add(valroot, name, json);
+
+	if (npb->field_path != NULL) {
+		json_object_array_add(npb->field_path, json_object_new_string(name));
+	}
+	ln_recordfieldposition(npb, name, iVal, iVal + lenVal, 0);
+	if (npb->field_path != NULL) {
+		int current_len = json_object_array_length(npb->field_path);
+		json_object_array_del_idx(npb->field_path, current_len - 1);
+	}
 done:
 	free(name);
 	return r;

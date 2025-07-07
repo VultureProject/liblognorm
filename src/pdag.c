@@ -1526,6 +1526,9 @@ tryParser(npb_t *const __restrict__ npb,
 			if (prs->prsid == ln_parserName2ID("cef")) {
 				is_container = 1;
 			}
+			else if (prs->prsid == ln_parserName2ID("name-value-list")) {
+				is_container = 1;
+			}
 			ln_recordfieldposition(npb, prs->name, startOffset, startOffset + *pParsed, is_container);
 		}
 	}
