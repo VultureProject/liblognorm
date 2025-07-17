@@ -1709,7 +1709,7 @@ PARSER_Parse(OpQuotedString)
             /* success, persist */
             *parsed = i + 1 - *offs; /* "eat" terminal double quote */
         } else {
-            // TODO : refactor
+            // old behaviour
             /* search end of string */
             while(i < npb->strLen && c[i] != '"')
                 i++;
