@@ -1720,7 +1720,7 @@ PARSER_Parse(OpQuotedString)
 			*parsed = i + 1 - *offs; /* "eat" terminal double quote */
 			/* create JSON value to save quoted string contents */
 			CHKN(cstr = strndup((char*)c + *offs + 1, *parsed - 2));
-			}
+		}
 	}
 	CHKN(*value = json_object_new_string(cstr));
 
