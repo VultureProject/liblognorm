@@ -3718,7 +3718,7 @@ PARSER_Parse(String)
 					if(i+1 < npb->strLen
 					   && npb->str[i+1] == data->qchar_end) {
 						bHadEscape = 1;
-						++i;
+					   	++i;
 					} else { /* not escaped -> terminal */
 						bHadEndQuote = 1;
 						break;
