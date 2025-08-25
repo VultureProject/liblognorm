@@ -27,6 +27,60 @@
 #include "parser.h"
 #include "helpers.h"
 
+void ln_recordfieldposition(npb_t *npb, const char *fieldName, size_t startOffset, size_t endOffset, int is_container) {
+	if (npb == NULL || npb->fieldposition == NULL || npb->field_path == NULL || fieldName == NULL) {
+		return;
+	}
+	if (fieldName[0] == '.' && fieldName[1] == '\0') {
+		return;
+	}
+
+	struct json_object *parent_object = npb->fieldposition;
+	const int path_depth = json_object_array_length(npb->field_path);
+
+	// Traverse the path to find the correct parent object for the current field.
+	// The path pushed to the stack includes the current field name.
+	for (int i = 0; i < path_depth - 1; ++i) {
+		const char *path_segment = json_object_get_string(json_object_array_get_idx(npb->field_path, i));
+		if (path_segment == NULL) return;
+
+		struct json_object *next_level;
+		if (!json_object_object_get_ex(parent_object, path_segment, &next_level)) {
+			// If a path segment doesn't exist, create it as a new object.
+			next_level = json_object_new_object();
+			json_object_object_add(parent_object, path_segment, next_level);
+		} else if (json_object_get_type(next_level) != json_type_object) {
+			// Conflict: A field with the same name as a path segment exists and is not an object.
+			return;
+		}
+		parent_object = next_level;
+	}
+
+	// Prepare the position array: [start, end]
+	struct json_object *pos_array = json_object_new_array();
+	json_object_array_add(pos_array, json_object_new_int64(startOffset));
+	json_object_array_add(pos_array, json_object_new_int64(endOffset));
+
+	if (is_container) {
+		// This is a container. Its entry must be an object.
+		struct json_object *field_object;
+		if (!json_object_object_get_ex(parent_object, fieldName, &field_object)) {
+			// If it doesn't exist (e.g., container with no children), create it.
+			field_object = json_object_new_object();
+			json_object_object_add(parent_object, fieldName, field_object);
+		} else if (json_object_get_type(field_object) != json_type_object) {
+			// This should not happen if logic is correct, but as a safeguard.
+			json_object_put(pos_array);
+			return;
+		}
+		// Add the container's own span to its object.
+		json_object_object_add(field_object, "__fieldposition", pos_array);
+	} else {
+		// This is a leaf. Its entry is just the position array.
+		json_object_object_add(parent_object, fieldName, pos_array);
+	}
+}
+
 void ln_displayPDAGComponentAlternative(struct ln_pdag *dag, int level);
 void ln_displayPDAGComponent(struct ln_pdag *dag, int level);
 
@@ -1265,6 +1319,13 @@ addRuleMetadata(npb_t *const __restrict__ npb,
 		json_object_object_add(meta_rule, RULE_LOCATION_KEY, location);
 	}
 
+	if(npb->fieldposition != NULL && LN_CTXOPT_ADD_FIELDS_POSITION) {
+		if(meta_rule == NULL)
+			meta_rule = json_object_new_object();
+		json_object_object_add(meta_rule, "fields_position", npb->fieldposition);
+		npb->fieldposition = NULL;
+	}
+
 	if(meta_rule != NULL) {
 		if(meta == NULL)
 			meta = json_object_new_object();
@@ -1291,8 +1352,8 @@ addRuleMetadata(npb_t *const __restrict__ npb,
 	}
 #endif
 
-	if(meta != NULL)
-		json_object_object_add(json, META_KEY, meta);
+		if(meta != NULL)
+			json_object_object_add(json, META_KEY, meta);
 }
 
 
@@ -1405,6 +1466,8 @@ tryParser(npb_t *const __restrict__ npb,
 	int r;
 	struct ln_pdag *endNode = NULL;
 	size_t parsedTo = npb->parsedTo;
+	const size_t startOffset = *offs;
+
 #	ifdef	ADVANCED_STATS
 	char hdr[16];
 	const size_t lenhdr
@@ -1443,7 +1506,9 @@ tryParser(npb_t *const __restrict__ npb,
 		LN_DBGPRINTF(dag->ctx, "called CUSTOM PARSER '%s', result %d, "
 			"offs %zd, *pParsed %zd", dag->ctx->type_pdags[prs->custTypeIdx].name, r, *offs, *pParsed);
 		*pParsed = npb->parsedTo - *offs;
-		if (r != 0) {
+		if (r == 0) {
+			ln_recordfieldposition(npb, prs->name, startOffset, startOffset + *pParsed, 1);
+		} else {
 			json_object_put(*value);
 			*value = NULL;
 		}
@@ -1454,6 +1519,18 @@ tryParser(npb_t *const __restrict__ npb,
 	} else {
 		r = parser_lookup_table[prs->prsid].parser(npb,
 			offs, prs->parser_data, pParsed, (prs->name == NULL) ? NULL : value);
+		if (r == 0) {
+			/* FIX: Check if the parser type is a known container like 'cef' */
+			int is_container = 0;
+			/* we currently know only about the cef parser, but others may follow. */
+			if (prs->prsid == ln_parserName2ID("cef")) {
+				is_container = 1;
+			}
+			else if (prs->prsid == ln_parserName2ID("name-value-list")) {
+				is_container = 1;
+			}
+			ln_recordfieldposition(npb, prs->name, startOffset, startOffset + *pParsed, is_container);
+		}
 	}
 	LN_DBGPRINTF(npb->ctx, "parser lookup returns %d, pParsed %zu", r, *pParsed);
 	npb->parsedTo = parsedTo;
@@ -1573,7 +1650,27 @@ LN_DBGPRINTF(dag->ctx, "%zu: enter parser, dag node %p, json %p", offs, dag, jso
 		}
 		i = offs;
 		value = NULL;
+
+		/* Push current field name to fieldposition path stack */
+		int path_pushed = 0;
+		if (npb->field_path != NULL && prs->name != NULL && strcmp(prs->name, ".") != 0) {
+			json_object_array_add(npb->field_path, json_object_new_string(prs->name));
+			path_pushed = 1;
+		}
+
 		localR = tryParser(npb, dag, &i, &parsed, &value, prs);
+
+		/* FIX: Pop the path immediately after the parser is tried.
+		 * This ensures the path is clean before the recursive call for sibling fields.
+		 */
+		if (path_pushed && npb->field_path != NULL) {
+			const int current_len = json_object_array_length(npb->field_path);
+			/* This next line is very important for correctness.
+			 * We put (decrement refcount) the string we added earlier. */
+			json_object_array_del_idx(npb->field_path, current_len - 1);
+		}
+
+
 		if(localR == 0) {
 			parsedTo = i + parsed;
 			/* potential hit, need to verify */
@@ -1601,6 +1698,7 @@ LN_DBGPRINTF(dag->ctx, "%zu: enter parser, dag node %p, json %p", offs, dag, jso
 				}
 			}
 		}
+
 		/* did we have a longer parser --> then update */
 		if(parsedTo > npb->parsedTo)
 			npb->parsedTo = parsedTo;
@@ -1628,6 +1726,13 @@ ln_normalize(ln_ctx ctx, const char *str, const size_t strLen, struct json_objec
 {
 	int r;
 	struct ln_pdag *endNode = NULL;
+	
+	npb_t npb;
+	memset(&npb, 0, sizeof(npb));
+	npb.ctx = ctx;
+	npb.str = str;
+	npb.strLen = strLen;
+
 	/* old cruft */
 	if(ctx->version == 1) {
 		r = ln_v1_normalize(ctx, str, strLen, json_p);
@@ -1635,11 +1740,14 @@ ln_normalize(ln_ctx ctx, const char *str, const size_t strLen, struct json_objec
 	}
 	/* end old cruft */
 
-	npb_t npb;
-	memset(&npb, 0, sizeof(npb));
-	npb.ctx = ctx;
-	npb.str = str;
-	npb.strLen = strLen;
+	if(ctx->opts & LN_CTXOPT_ADD_FIELDS_POSITION) {
+		npb.fieldposition = json_object_new_object();
+		npb.field_path = json_object_new_array();
+	} else {
+		npb.fieldposition = NULL;
+		npb.field_path = NULL;
+	}
+
 	if(ctx->opts & LN_CTXOPT_ADD_RULE) {
 		npb.rule = es_newStr(1024);
 	}
@@ -1719,5 +1827,12 @@ ln_normalize(ln_ctx ctx, const char *str, const size_t strLen, struct json_objec
 
 	es_deleteStr(npb.astats.exec_path);
 #endif
-done:	return r;
+done:
+	if (npb.field_path != NULL) {
+		json_object_put(npb.field_path);
+	}
+	if (npb.fieldposition != NULL) {
+		json_object_put(npb.fieldposition);
+	}
+	return r;
 }

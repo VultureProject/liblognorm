@@ -28,6 +28,7 @@ TESTS_SHELLSCRIPTS = \
 	usrdef_simple.sh \
 	usrdef_two.sh \
 	usrdef_twotypes.sh \
+	fields_position.sh \
 	usrdef_actual1.sh \
 	usrdef_ipaddr.sh \
 	usrdef_ipaddr_dotdot.sh \
