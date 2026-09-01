@@ -3308,11 +3308,11 @@ PARSER_Parse(CheckpointLEA)
 		if(i+1 >= npb->strLen || npb->str[i] != ':') {
 			FAIL(LN_WRONGPARSER);
 		}
-		/* Sometimes there is multiple colons */
+		lenName = i - iName;
+		/* Sometimes there is multiple colons between key and value, we need to skip */
 		while( i < npb->strLen && npb->str[i+1] == ':' ) {
 			i++;
 		}
-		lenName = i - iName;
 		++i; /* skip ':' */
 
 		while(i < npb->strLen && npb->str[i] == ' ') /* skip leading SP */
